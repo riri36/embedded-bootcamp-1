@@ -21,6 +21,8 @@
 #include "main.h"
 #include "usart.h"
 #include "gpio.h"
+#include "spi.h"
+#include "tim.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -42,13 +44,19 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+SPI_HandleTypeDef hspi;
+TIM_HandleTypeDef htim1;
 
 /* USER CODE BEGIN PV */
-
+const uint16_t SIZE = 10;
+const uint32_t TIMEOUT = HAL_MAX_DELAY;
+const uint16_t PERIOD = 60000;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
+void HAL_SPI_MspInit(void);
+void HAL_GPIO_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -65,7 +73,8 @@ void SystemClock_Config(void);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
+	uint8_t spi_buf_rx[10];
+	uint8_t spi_buf_tx[3] = {0, 0, 0}; // setting D2, D1, D0 to 0 for mode and channel
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -86,15 +95,30 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_USART2_UART_Init();
-  /* USER CODE BEGIN 2 */
+  MX_SPI1_Init();
+  MX_TIM1_Init();
 
+  /* USER CODE BEGIN 2 */
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET); // pull CS high
+  HAL_TIM_PWM_Start(&htim1, TIM1_CH1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET); // pull CS low
+	  HAL_SPI_TransmitReceive(&hspi, spi_buf_tx, spi_buf_rx, SIZE, TIMEOUT);
+	  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET); // pull CS high
+
+	  // ADC 0 == PWM Duty Cycle 5%
+	  // ADC 1024 == PWM Duty Cycle 10%
+	  // pwm output must be between 3000 and 6000 (0.05*60k)
+	  // = 3000 + adc_val * (3000/1023)
+	  adc_output = (PERIOD*0.05) + (spi_buf_rx * (3000/1023)); // convert ADC to counts
+	  __HAL_TIM_SET_COMPARE(&htim1, TIM1_CH1, adc_output); // set compare register
+
+	  HAL_Delay(10);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
